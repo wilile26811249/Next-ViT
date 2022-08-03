@@ -26,9 +26,9 @@ class MHCA(nn.Module):
     groups : int
         Number of groups.
     """
-    def __init__(self, channel, groups = 32):
+    def __init__(self, channel):
         super(MHCA, self).__init__()
-        self.grouped_conv = nn.Conv2d(channel, channel, kernel_size = 3, padding = 1, groups = groups)
+        self.grouped_conv = nn.Conv2d(channel, channel, kernel_size = 3, padding = 1, groups = channel // 32)
         self.bn = nn.BatchNorm2d(channel)
         self.relu = nn.ReLU(inplace = True)
         self.point_conv = nn.Conv2d(channel, channel, kernel_size = 1)
@@ -42,12 +42,13 @@ class Mlp(nn.Module):
     Multi layer perceptron with dropout.
     Paper: https://arxiv.org/abs/2111.11418
     """
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, expansion_ratio = 1):
         super().__init__()
+        hidden_feature = in_features * expansion_ratio
         self.bn = nn.BatchNorm2d(in_features)
         self.relu = nn.ReLU(inplace = True)
-        self.conv1 = nn.Conv2d(in_features, out_features, kernel_size = 1)
-        self.conv2 = nn.Conv2d(out_features, out_features, kernel_size = 1)
+        self.conv1 = nn.Conv2d(in_features, hidden_feature, kernel_size = 1)
+        self.conv2 = nn.Conv2d(hidden_feature, out_features, kernel_size = 1)
 
     def forward(self, x):
         return self.conv2(self.relu(self.conv1(self.bn(x))))
@@ -64,7 +65,7 @@ class NCB(nn.Module):
     def __init__(self, channel):
         super().__init__()
         self.mhca = MHCA(channel)
-        self.mlp = Mlp(channel, channel)
+        self.mlp = Mlp(channel, channel, expansion_ratio = 3)
 
     def forward(self, x):
         x = self.mhca(x) + x
@@ -150,16 +151,16 @@ class NTB(nn.Module):
     shrink_ratio: int
         Shrink ratio of the channel rection.
     """
-    def __init__(self, in_channel, out_channel, shrink_ratio = 0.75):
+    def __init__(self, in_channel, out_channel, shrink_ratio = 0.75, spatial_reduction_ratio = 1):
         super().__init__()
         first_part_dim = int(out_channel * shrink_ratio)
         second_part_dim = out_channel - first_part_dim
         self.point_conv1 = nn.Conv2d(in_channel, first_part_dim, kernel_size = 1)
         self.point_conv2 = nn.Conv2d(first_part_dim, second_part_dim, kernel_size = 1)
 
-        self.e_mhsa = E_MHSA(first_part_dim)
+        self.e_mhsa = E_MHSA(first_part_dim, stride = spatial_reduction_ratio)
         self.mhca = MHCA(second_part_dim)
-        self.mlp = Mlp(out_channel, out_channel)
+        self.mlp = Mlp(out_channel, out_channel, expansion_ratio = 2)
 
     def forward(self, x):
         x = self.point_conv1(x)
@@ -206,13 +207,14 @@ class Stem(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, in_channels, out_channels, ncb_layers, nct_layers, repeat):
+    def __init__(self, in_channels, out_channels, ncb_layers, nct_layers, repeat, spatial_reduction_ratio = 1):
         super(Block, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.ncb_layers = ncb_layers
         self.nct_layers = nct_layers
         self.repeat = repeat
+        self.spatial_reduction_ratio = spatial_reduction_ratio
 
         block = []
         for num in range(repeat):
@@ -229,7 +231,7 @@ class Block(nn.Module):
         for _ in range(ncb_layers):
             self.sub_layers +=  [NCB(in_channels)]
         for _ in range(nct_layers):
-            self.sub_layers +=  [NTB(in_channels, out_channels)]
+            self.sub_layers +=  [NTB(in_channels, out_channels, spatial_reduction_ratio = self.spatial_reduction_ratio)]
         return nn.Sequential(*self.sub_layers)
 
     def forward(self, x):

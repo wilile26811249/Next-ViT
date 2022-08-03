@@ -13,19 +13,19 @@ class NextVit(nn.Module):
         self.stem = Stem(in_channels, 64)
         self.stage1 = nn.Sequential(
             PatchEmbed(64, self.next_vit_channel[0]),
-            Block(self.next_vit_channel[0], self.next_vit_channel[0], 1, 0, 1),
+            Block(self.next_vit_channel[0], self.next_vit_channel[0], 1, 0, 1, 8),
         )
         self.stage2 = nn.Sequential(
             PatchEmbed(self.next_vit_channel[0], self.next_vit_channel[1]),
-            Block(self.next_vit_channel[1], 256, 3, 1, 1),
+            Block(self.next_vit_channel[1], 256, 3, 1, 1, 4),
         )
         self.stage3 = nn.Sequential(
             PatchEmbed(256, self.next_vit_channel[2]),
-            Block(self.next_vit_channel[2], 512, 4, 1, stage3_repeat),
+            Block(self.next_vit_channel[2], 512, 4, 1, stage3_repeat, 2),
         )
         self.stage4 = nn.Sequential(
             PatchEmbed(512, self.next_vit_channel[3]),
-            Block(self.next_vit_channel[3], 1024, 2, 1, 1),
+            Block(self.next_vit_channel[3], 1024, 2, 1, 1, 1),
         )
 
         # Global Average Pooling
