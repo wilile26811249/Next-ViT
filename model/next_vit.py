@@ -5,7 +5,7 @@ from .module import Stem, PatchEmbed, Block
 
 
 class NextVit(nn.Module):
-    def __init__(self, in_channels = 3, stage3_repeat = 2, num_class = 1000):
+    def __init__(self, in_channels = 3, stage3_repeat = 2, num_class = 1000, drop_path = 0.):
         super().__init__()
         self.next_vit_channel = [96, 192, 384, 768]
 
@@ -13,19 +13,19 @@ class NextVit(nn.Module):
         self.stem = Stem(in_channels, 64)
         self.stage1 = nn.Sequential(
             PatchEmbed(64, self.next_vit_channel[0]),
-            Block(self.next_vit_channel[0], self.next_vit_channel[0], 1, 0, 1, 8),
+            Block(self.next_vit_channel[0], self.next_vit_channel[0], 1, 0, 1, 8, drop_path),
         )
         self.stage2 = nn.Sequential(
             PatchEmbed(self.next_vit_channel[0], self.next_vit_channel[1]),
-            Block(self.next_vit_channel[1], 256, 3, 1, 1, 4),
+            Block(self.next_vit_channel[1], 256, 3, 1, 1, 4, drop_path),
         )
         self.stage3 = nn.Sequential(
             PatchEmbed(256, self.next_vit_channel[2]),
-            Block(self.next_vit_channel[2], 512, 4, 1, stage3_repeat, 2),
+            Block(self.next_vit_channel[2], 512, 4, 1, stage3_repeat, 2, drop_path),
         )
         self.stage4 = nn.Sequential(
             PatchEmbed(512, self.next_vit_channel[3]),
-            Block(self.next_vit_channel[3], 1024, 2, 1, 1, 1),
+            Block(self.next_vit_channel[3], 1024, 2, 1, 1, 1, drop_path),
         )
 
         # Global Average Pooling
@@ -56,13 +56,13 @@ class NextVit(nn.Module):
 
 
 def NextViT_S():
-    net = NextVit(stage3_repeat = 2)
+    net = NextVit(stage3_repeat = 2, drop_path = 0.1)
     return net
 
 def NextViT_B():
-    net = NextVit(stage3_repeat = 4)
+    net = NextVit(stage3_repeat = 4, drop_path = 0.2)
     return net
 
 def NextViT_L():
-    net = NextVit(stage3_repeat = 6)
+    net = NextVit(stage3_repeat = 6, drop_path = 0.2)
     return net

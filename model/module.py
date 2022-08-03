@@ -2,6 +2,7 @@ from turtle import forward
 from einops import rearrange
 import torch
 import torch.nn as nn
+from timm.models.layers import DropPath
 
 
 class Conv3x3(nn.Module):
@@ -62,14 +63,15 @@ class NCB(nn.Module):
     channel : int
         Number of channels.
     """
-    def __init__(self, channel):
+    def __init__(self, channel, drop_path = 0.):
         super().__init__()
         self.mhca = MHCA(channel)
         self.mlp = Mlp(channel, channel, expansion_ratio = 3)
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
-        x = self.mhca(x) + x
-        x = self.mlp(x) + x
+        x = self.drop_path(self.mhca(x)) + x
+        x = self.drop_path(self.mlp(x)) + x
         return x
 
 
@@ -89,7 +91,7 @@ class E_MHSA(nn.Module):
     stride : int
         Stride of the convolutional block.
     """
-    def __init__(self, dim, heads = 8, inner_dim = 64 , dropout = 0., stride = 2):
+    def __init__(self, dim, heads = 8, inner_dim = 64 , dropout = 0.,stride = 2):
         super().__init__()
         self.dim = dim
         self.inner_dim = inner_dim
@@ -151,10 +153,11 @@ class NTB(nn.Module):
     shrink_ratio: int
         Shrink ratio of the channel rection.
     """
-    def __init__(self, in_channel, out_channel, shrink_ratio = 0.75, spatial_reduction_ratio = 1):
+    def __init__(self, in_channel, out_channel, shrink_ratio = 0.75, spatial_reduction_ratio = 1, drop_path = 0.):
         super().__init__()
         first_part_dim = int(out_channel * shrink_ratio)
         second_part_dim = out_channel - first_part_dim
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.point_conv1 = nn.Conv2d(in_channel, first_part_dim, kernel_size = 1)
         self.point_conv2 = nn.Conv2d(first_part_dim, second_part_dim, kernel_size = 1)
 
@@ -164,13 +167,13 @@ class NTB(nn.Module):
 
     def forward(self, x):
         x = self.point_conv1(x)
-        first_part = self.e_mhsa(x) + x
+        first_part = self.drop_path(self.e_mhsa(x)) + x
 
         seconf_part = self.point_conv2(first_part)
         seconf_part = self.mhca(seconf_part) + seconf_part
 
         result = torch.cat([first_part, seconf_part], dim = 1)
-        result = self.mlp(result) + result
+        result = self.drop_path(self.mlp(result)) + result
         return result
 
 
@@ -207,7 +210,7 @@ class Stem(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, in_channels, out_channels, ncb_layers, nct_layers, repeat, spatial_reduction_ratio = 1):
+    def __init__(self, in_channels, out_channels, ncb_layers, nct_layers, repeat, spatial_reduction_ratio = 1, drop_path = 0.):
         super(Block, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -215,23 +218,24 @@ class Block(nn.Module):
         self.nct_layers = nct_layers
         self.repeat = repeat
         self.spatial_reduction_ratio = spatial_reduction_ratio
+        self.drop_path = drop_path
 
         block = []
         for num in range(repeat):
             if num != repeat - 1:
                 block += self._make_layer(self.in_channels, self.in_channels,
-                                          self.ncb_layers, self.nct_layers)
+                                          self.ncb_layers, self.nct_layers, self.drop_path)
             else:
                 block += self._make_layer(self.in_channels, self.out_channels,
-                                          self.ncb_layers, self.nct_layers)
+                                          self.ncb_layers, self.nct_layers, self.drop_path)
         self.block = nn.Sequential(*block)
 
-    def _make_layer(self, in_channels, out_channels, ncb_layers, nct_layers):
+    def _make_layer(self, in_channels, out_channels, ncb_layers, nct_layers, drop_path):
         self.sub_layers = []
         for _ in range(ncb_layers):
-            self.sub_layers +=  [NCB(in_channels)]
+            self.sub_layers +=  [NCB(in_channels, drop_path)]
         for _ in range(nct_layers):
-            self.sub_layers +=  [NTB(in_channels, out_channels, spatial_reduction_ratio = self.spatial_reduction_ratio)]
+            self.sub_layers +=  [NTB(in_channels, out_channels, spatial_reduction_ratio = self.spatial_reduction_ratio, drop_path = drop_path)]
         return nn.Sequential(*self.sub_layers)
 
     def forward(self, x):
