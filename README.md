@@ -2,6 +2,7 @@
 
 Unofficial PyTorch implementation of Next-ViT based on paper [Next-ViT: Next Generation Vision Transformer for Efficient Deployment in Realistic Industrial Scenarios](https://arxiv.org/abs/2207.05501).
 
+**Official Github Repo: [bytedance/Next-ViT](https://github.com/bytedance/Next-ViT)**
 
 ![Network Architecture image from the paper](model_arch.jpg)
 
